@@ -8,12 +8,13 @@
 
 #define DOMAIN_ID 0
 #define TOPIC_NAME "NodeStatusReport"
+#define DDS_ENTITY_INVALID (-1)
 
 int main()
 {
-    dds_entity_t participant;
-    dds_entity_t topic;
-    dds_entity_t writer;
+    dds_entity_t participant = DDS_ENTITY_INVALID;
+    dds_entity_t topic = DDS_ENTITY_INVALID;
+    dds_entity_t writer = DDS_ENTITY_INVALID;
     dds_return_t rc;
 
     participant = dds_create_participant(DOMAIN_ID, NULL, NULL);
@@ -41,19 +42,15 @@ int main()
 
     NodeStatusReport data;
     memset(&data, 0, sizeof(data));
-    data.node_name = "CSP1";  // 静态字符串常量，OK！
 
-    // Conse加点料：确保有Subscriber连接上，再发数据
-    printf("Waiting for subscriber to match...\n");
-
+    // Wait for subscriber to match
     dds_instance_handle_t matched;
     int wait_count = 0;
     while (1) {
         rc = dds_get_matched_subscriptions(writer, &matched, 1);
         if (rc < 0) {
             fprintf(stderr, "dds_get_matched_subscriptions failed: %s\n", dds_strretcode(-rc));
-            dds_delete(participant);
-            return EXIT_FAILURE;
+            break;
         }
         if (rc > 0) {
             printf("Subscriber matched! Ready to publish data.\n");
@@ -64,10 +61,10 @@ int main()
         if (wait_count % 5 == 0) {
             printf("Still waiting for subscriber...\n");
         }
-        usleep(200 * 1000); // Conse小调优：更温柔地等待
+        usleep(200 * 1000);
     }
 
-    srand((unsigned int)time(NULL)); // Conse补充：种子随机数更科学
+    srand((unsigned int)time(NULL)); 
 
     while (1) {
         data.cpu_a_usage = rand() % 10000;
@@ -92,7 +89,18 @@ int main()
 
         sleep(1);
     }
+    dds_free(data.node_name);
 
-    dds_delete(participant);
+    // Cleanup: Ensure deleting entities correctly
+    if (writer != DDS_ENTITY_INVALID) {
+        dds_delete(writer);
+    }
+    if (topic != DDS_ENTITY_INVALID) {
+        dds_delete(topic);
+    }
+    if (participant != DDS_ENTITY_INVALID) {
+        dds_delete(participant);
+    }
+
     return EXIT_SUCCESS;
 }
