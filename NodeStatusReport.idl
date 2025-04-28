@@ -1,0 +1,9 @@
+struct NodeStatusReport
+{
+    string node_name;           // 节点名称
+    uint32 cpu_a_usage;         // A核使用率，百分比乘100
+    uint32 cpu_m_usage;         // M核使用率
+    uint32 ddr_usage;           // DDR使用量，单位MB
+    uint32 total_ddr;           // 总DDR大小，单位MB
+    uint64 timestamp;           // 时间戳
+};
