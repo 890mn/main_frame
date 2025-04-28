@@ -37,11 +37,37 @@ int main()
         return EXIT_FAILURE;
     }
 
+    printf("Starting Publisher...\n");
+
     NodeStatusReport data;
     memset(&data, 0, sizeof(data));
-    data.node_name = "CSP1";  // 字符串常量，没问题
+    data.node_name = "CSP1";  // 静态字符串常量，OK！
 
-    printf("Starting Publisher...\n");
+    // Conse加点料：确保有Subscriber连接上，再发数据
+    printf("Waiting for subscriber to match...\n");
+
+    dds_instance_handle_t matched;
+    int wait_count = 0;
+    while (1) {
+        rc = dds_get_matched_subscriptions(writer, &matched, 1);
+        if (rc < 0) {
+            fprintf(stderr, "dds_get_matched_subscriptions failed: %s\n", dds_strretcode(-rc));
+            dds_delete(participant);
+            return EXIT_FAILURE;
+        }
+        if (rc > 0) {
+            printf("Subscriber matched! Ready to publish data.\n");
+            break;
+        }
+
+        wait_count++;
+        if (wait_count % 5 == 0) {
+            printf("Still waiting for subscriber...\n");
+        }
+        usleep(200 * 1000); // Conse小调优：更温柔地等待
+    }
+
+    srand((unsigned int)time(NULL)); // Conse补充：种子随机数更科学
 
     while (1) {
         data.cpu_a_usage = rand() % 10000;
@@ -53,10 +79,15 @@ int main()
         rc = dds_write(writer, &data);
         if (rc != DDS_RETCODE_OK) {
             fprintf(stderr, "Failed to write sample: %s\n", dds_strretcode(-rc));
-            break;  // Conse加：写失败，退出
+            break;
         } else {
-            printf("Published: A:%u%% M:%u%% DDR:%uMB\n", 
-                data.cpu_a_usage / 100, data.cpu_m_usage / 100, data.ddr_usage);
+            printf("Published: Node:%s A:%u%% M:%u%% DDR:%u/%u MB @%lu\n",
+                data.node_name,
+                data.cpu_a_usage / 100,
+                data.cpu_m_usage / 100,
+                data.ddr_usage,
+                data.total_ddr,
+                data.timestamp);
         }
 
         sleep(1);

@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h> // for sleep()
 
 #define DOMAIN_ID 0
 #define TOPIC_NAME "NodeStatusReport"
@@ -37,13 +38,37 @@ int main()
 
     printf("Starting Subscriber...\n");
 
+    // 先等待至少有一个Publisher匹配上
+    printf("Waiting for publisher to match...\n");
+
+    dds_instance_handle_t matched;
+    int wait_count = 0;
+    while (1) {
+        rc = dds_get_matched_publications(reader, &matched, 1);
+        if (rc < 0) {
+            fprintf(stderr, "dds_get_matched_publications failed: %s\n", dds_strretcode(-rc));
+            dds_delete(participant);
+            return EXIT_FAILURE;
+        }
+        if (rc > 0) {
+            printf("Publisher matched! Ready to receive data.\n");
+            break;
+        }
+
+        wait_count++;
+        if (wait_count % 5 == 0) {
+            printf("Still waiting for publisher...\n");
+        }
+        usleep(200 * 1000); // Conse调参：每200ms检查一次，比较温柔
+    }
+
     NodeStatusReport data;
     void* samples[1] = { NULL };
     dds_sample_info_t infos[1];
 
     while (1) {
-        samples[0] = &data;  // Conse加：每次循环重新指向，保险
-        memset(&infos[0], 0, sizeof(infos[0])); // Conse加：防止脏数据
+        samples[0] = &data;
+        memset(&infos[0], 0, sizeof(infos[0]));
 
         rc = dds_take(reader, samples, infos, 1, 1);
         if (rc < 0) {
@@ -53,14 +78,14 @@ int main()
         if (rc > 0 && samples[0] != NULL && infos[0].valid_data) {
             NodeStatusReport *recv = (NodeStatusReport *)samples[0];
             printf("[Recv] Node: %s | CPU_A: %u%% | CPU_M: %u%% | DDR: %uMB/%uMB | TS: %lu\n",
-                recv->node_name, 
-                recv->cpu_a_usage / 100, 
-                recv->cpu_m_usage / 100, 
-                recv->ddr_usage, 
-                recv->total_ddr, 
+                recv->node_name,
+                recv->cpu_a_usage / 100,
+                recv->cpu_m_usage / 100,
+                recv->ddr_usage,
+                recv->total_ddr,
                 recv->timestamp);
         }
-        // Conse提示：如果rc==0，正常空闲轮询就什么也不做
+        usleep(50 * 1000); // Conse加点小延时，降低空转负担
     }
 
     dds_delete(participant);
